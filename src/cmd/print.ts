@@ -2,12 +2,12 @@ export const color = {
   reset: "\x1b[0m",
 
   text: {
-    primary: "\x1b[33m", // amarillo
-    secondary: "\x1b[35m", // magenta
-    info: "\x1b[36m", // cyan
+    primary: "\x1b[32m", // magenta \x1b[95m
+    secondary: "\x1b[94m", // magenta
+    info: "\x1b[96m", // cyan
     warning: "\x1b[93m", // amarillo brillante
-    danger: "\x1b[31m", // rojo
-    success: "\x1b[32m", // verde ✅
+    danger: "\x1b[91m", // rojo
+    success: "\x1b[92m", // verde
     gray: "\x1b[90m", // gris
   },
 
@@ -19,7 +19,7 @@ export const color = {
     danger: "\x1b[41m",
     success: "\x1b[42m",
   },
-} as const
+}
 
 export const style = {
   bold: "\x1b[1m",
