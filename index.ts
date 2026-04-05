@@ -6,13 +6,13 @@ for (const target of args.targets) {
   switch (target) {
     case "version": {
       const { version } = await import("./src/commands/help")
-      await version()
+      version()
       break
     }
 
     case "help": {
       const { help } = await import("./src/commands/help")
-      await help()
+      help()
       break
     }
 

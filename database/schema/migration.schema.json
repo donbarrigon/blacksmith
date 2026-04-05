@@ -1,0 +1,428 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://forge-cli/migration.schema.json",
+  "title": "Forge Migration",
+  "description": "Schema for Forge CLI migration files",
+  "type": "object",
+  "required": ["up", "down"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "up": { "$ref": "#/$defs/migrationBlock" },
+    "down": { "$ref": "#/$defs/migrationBlock" }
+  },
+
+  "$defs": {
+    "migrationBlock": {
+      "type": "object",
+      "description": "Each key is a collection name",
+      "additionalProperties": { "$ref": "#/$defs/collectionOperations" }
+    },
+
+    "collectionOperations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "validationLevel": {
+          "type": "string",
+          "enum": ["strict", "moderate", "off"],
+          "default": "strict",
+          "description": "strict = validates all inserts and updates. moderate = only validates existing valid documents. off = disables validation"
+        },
+
+        "validationAction": {
+          "type": "string",
+          "enum": ["error", "warn"],
+          "default": "error",
+          "description": "error = rejects invalid documents. warn = logs a warning but allows the operation"
+        },
+
+        "createIndex": {
+          "type": "array",
+          "description": "Create new indexes on the collection",
+          "items": { "$ref": "#/$defs/indexDefinition" },
+          "minItems": 1
+        },
+
+        "alterIndex": {
+          "type": "array",
+          "description": "Drop and recreate existing indexes",
+          "items": { "$ref": "#/$defs/indexDefinition" },
+          "minItems": 1
+        },
+
+        "dropIndex": {
+          "type": "array",
+          "description": "Drop indexes by field name or index name",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+
+        "validator": {
+          "$ref": "#/$defs/mongoValidator",
+          "description": "Create a new validator on the collection"
+        },
+
+        "alterValidator": {
+          "$ref": "#/$defs/mongoValidator",
+          "description": "Replace the existing validator on the collection"
+        },
+
+        "dropValidator": {
+          "type": "boolean",
+          "const": true,
+          "description": "Remove the validator from the collection. The collection remains intact"
+        },
+
+        "dropCollection": {
+          "type": "boolean",
+          "const": true,
+          "description": "Drop the entire collection. Recommended only in down blocks"
+        },
+
+        "indexModel": {
+          "type": "array",
+          "description": "Raw MongoDB index models for complex cases not covered by createIndex",
+          "items": { "$ref": "#/$defs/indexModel" },
+          "minItems": 1
+        }
+      }
+    },
+
+    "indexDefinition": {
+      "type": "object",
+      "required": ["field", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "description": "Single field name"
+            },
+            {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 2,
+              "uniqueItems": true,
+              "description": "Compound index — all fields share the same index"
+            }
+          ],
+          "description": "Field name or array of fields for compound indexes"
+        },
+
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "int",
+            "long",
+            "double",
+            "decimal",
+            "bool",
+            "date",
+            "timestamp",
+            "objectId",
+            "uuid",
+            "binData",
+            "object",
+            "array",
+            "null"
+          ],
+          "description": "Data type of the field"
+        },
+
+        "index": {
+          "type": "string",
+          "enum": ["index", "text", "hashed", "2dsphere", "2d", "wildcard"],
+          "default": "index",
+          "description": "Index type. Defaults to index"
+        },
+
+        "indexName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Custom name for the index. Auto-generated if omitted"
+        },
+
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max length for string fields. Default 255 for string type"
+        },
+
+        "nullable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the field can be null"
+        },
+
+        "order": {
+          "type": "string",
+          "enum": ["asc", "desc"],
+          "default": "asc",
+          "description": "Index sort order. Converted to 1 (asc) or -1 (desc) internally"
+        },
+
+        "sparse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Only index documents that contain the field. Useful for nullable fields"
+        },
+
+        "unique": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce uniqueness independently of index type"
+        },
+
+        "background": {
+          "type": "boolean",
+          "default": false,
+          "description": "Build index in background without blocking the collection. Recommended for production"
+        },
+
+        "expireAfterSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TTL in seconds. Only valid for date and timestamp fields"
+        },
+
+        "collation": {
+          "$ref": "#/$defs/collation"
+        }
+      }
+    },
+
+    "collation": {
+      "type": "object",
+      "required": ["locale"],
+      "additionalProperties": false,
+      "description": "Language-specific comparison rules for string fields",
+      "properties": {
+        "locale": {
+          "type": "string",
+          "minLength": 2,
+          "description": "BCP 47 language tag e.g. en, es, fr, zh"
+        },
+        "strength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "1 = case and accent insensitive. 2 = accent sensitive. 3 = case sensitive. 5 = identical"
+        },
+        "caseLevel": {
+          "type": "boolean",
+          "description": "Include case comparison at strength level 1 or 2"
+        },
+        "caseFirst": {
+          "type": "string",
+          "enum": ["upper", "lower", "off"],
+          "description": "Sort uppercase or lowercase first"
+        },
+        "numericOrdering": {
+          "type": "boolean",
+          "description": "Compare numeric strings as numbers e.g. 10 > 9"
+        },
+        "alternate": {
+          "type": "string",
+          "enum": ["non-ignorable", "shifted"],
+          "description": "Whether whitespace and punctuation are considered base characters"
+        },
+        "backwards": {
+          "type": "boolean",
+          "description": "Accent marks sort from back of string. Used in French"
+        }
+      }
+    },
+
+    "mongoValidator": {
+      "type": "object",
+      "required": ["$jsonSchema"],
+      "additionalProperties": false,
+      "description": "MongoDB validator object passed directly to the driver",
+      "properties": {
+        "$jsonSchema": {
+          "type": "object",
+          "required": ["bsonType"],
+          "additionalProperties": true,
+          "properties": {
+            "bsonType": {
+              "type": "string",
+              "const": "object"
+            },
+            "required": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "List of required field names"
+            },
+            "additionalProperties": {
+              "type": "boolean",
+              "description": "Whether fields not listed in properties are allowed"
+            },
+            "description": {
+              "type": "string"
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/bsonProperty" }
+            }
+          }
+        }
+      }
+    },
+
+    "bsonProperty": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "bsonType": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "string",
+                "int",
+                "long",
+                "double",
+                "decimal",
+                "bool",
+                "date",
+                "timestamp",
+                "objectId",
+                "uuid",
+                "binData",
+                "object",
+                "array",
+                "null",
+                "regex",
+                "javascript"
+              ]
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "int",
+                  "long",
+                  "double",
+                  "decimal",
+                  "bool",
+                  "date",
+                  "timestamp",
+                  "objectId",
+                  "uuid",
+                  "binData",
+                  "object",
+                  "array",
+                  "null",
+                  "regex",
+                  "javascript"
+                ]
+              },
+              "minItems": 2,
+              "uniqueItems": true,
+              "description": "Multiple allowed types e.g. [string, null] for nullable fields"
+            }
+          ]
+        },
+
+        "description": { "type": "string" },
+        "minLength": { "type": "integer", "minimum": 0 },
+        "maxLength": { "type": "integer", "minimum": 0 },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "exclusiveMinimum": { "type": "number" },
+        "exclusiveMaximum": { "type": "number" },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern the string must match"
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1,
+          "description": "List of allowed values"
+        },
+        "minItems": { "type": "integer", "minimum": 0 },
+        "maxItems": { "type": "integer", "minimum": 0 },
+        "uniqueItems": { "type": "boolean" },
+        "required": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "description": "Required fields for nested objects"
+        },
+        "additionalProperties": { "type": "boolean" },
+        "items": { "$ref": "#/$defs/bsonProperty" },
+        "properties": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/bsonProperty" }
+        }
+      }
+    },
+
+    "indexModel": {
+      "type": "object",
+      "required": ["model"],
+      "additionalProperties": false,
+      "description": "Raw MongoDB index model for complex cases. Uses Go driver v2 conventions",
+      "properties": {
+        "model": {
+          "type": "object",
+          "description": "MongoDB index key document. Use 1 or -1 for order, or string for special index types",
+          "minProperties": 1,
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "enum": [1, -1],
+                "description": "1 = ascending, -1 = descending"
+              },
+              {
+                "type": "string",
+                "enum": ["2dsphere", "2d", "text", "hashed"],
+                "description": "Special index type"
+              }
+            ]
+          }
+        },
+        "options": {
+          "type": "object",
+          "description": "MongoDB CreateIndexesOptions from the Go driver v2",
+          "additionalProperties": true,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Custom index name"
+            },
+            "unique": { "type": "boolean" },
+            "sparse": { "type": "boolean" },
+            "background": { "type": "boolean" },
+            "expireAfterSeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "partialFilterExpression": {
+              "type": "object",
+              "description": "Filter expression for partial indexes"
+            },
+            "collation": { "$ref": "#/$defs/collation" },
+            "wildcardProjection": {
+              "type": "object",
+              "description": "Fields to include or exclude for wildcard indexes"
+            },
+            "hidden": {
+              "type": "boolean",
+              "description": "Hidden indexes are not used by the query planner"
+            }
+          }
+        }
+      }
+    }
+  }
+}

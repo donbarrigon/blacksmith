@@ -1,0 +1,80 @@
+{
+  "up": {
+    "roles": {
+      "createIndex": [
+        {
+          "field": "name",
+          "type": "string",
+          "length": 255,
+          "index": "index",
+          "unique": true,
+          "nullable": false,
+          "order": "asc"
+        }
+      ],
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": ["name", "permissions"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "bsonType": "string",
+              "minLength": 1,
+              "description": "Role name is required"
+            },
+            "permissions": {
+              "bsonType": "array",
+              "items": {
+                "bsonType": "objectId"
+              },
+              "description": "Array of permission ObjectIds"
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error"
+    },
+    "permissions": {
+      "createIndex": [
+        {
+          "field": ["name", "api"],
+          "type": "string",
+          "length": 255,
+          "index": "index",
+          "unique": true,
+          "nullable": false,
+          "order": "asc"
+        }
+      ],
+      "validator": {
+        "$jsonSchema": {
+          "bsonType": "object",
+          "required": ["name", "api"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "bsonType": "string",
+              "minLength": 1
+            },
+            "api": {
+              "bsonType": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "validationLevel": "strict",
+      "validationAction": "error"
+    }
+  },
+  "down": {
+    "roles": {
+      "dropCollection": true
+    },
+    "permissions": {
+      "dropCollection": true
+    }
+  }
+}
