@@ -1,0 +1,172 @@
+{
+  "$schema": "../schema/migration.schema.json",
+  "up": {
+    "users": {
+      "validationLevel": "off",
+      "validationAction": "error",
+      "createField": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "nullable": false,
+          "primary": true,
+          "description": "Primary key"
+        },
+        {
+          "name": "nickName",
+          "type": "string",
+          "length": 255,
+          "description": "Unique nick name"
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "length": 255,
+          "description": "Unique email address"
+        },
+        {
+          "name": "phone",
+          "type": "string",
+          "length": 20,
+          "nullable": true,
+          "description": "Unique phone number"
+        },
+        {
+          "name": "email_verified_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "When the email was verified"
+        },
+        {
+          "name": "phone_verified_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "When the phone was verified"
+        },
+        {
+          "name": "roles",
+          "type": "array",
+          "items": {
+            "name": "role",
+            "type": "string"
+          },
+          "description": "List of role names assigned to the user"
+        },
+        {
+          "name": "permissions",
+          "type": "array",
+          "items": {
+            "name": "permission",
+            "type": "string"
+          },
+          "description": "List of permission names assigned to the user"
+        },
+        {
+          "name": "profile",
+          "type": "json",
+          "nullable": true,
+          "description": "User profile information",
+          "jsonSchema": [
+            {
+              "name": "name",
+              "type": "string",
+              "length": 255,
+              "description": "Full name"
+            },
+            {
+              "name": "document_type",
+              "type": "enum",
+              "values": ["cedula", "pasaporte", "nit", "tarjeta_identidad", "cedula_extranjeria"],
+              "description": "Type of identity document"
+            },
+            {
+              "name": "document",
+              "type": "string",
+              "length": 50,
+              "description": "Identity document number"
+            },
+            {
+              "name": "address",
+              "type": "string",
+              "length": 500,
+              "nullable": true,
+              "description": "Street address"
+            },
+            {
+              "name": "postal_code",
+              "type": "string",
+              "length": 5,
+              "nullable": true,
+              "description": "Postal code"
+            },
+            {
+              "name": "city_id",
+              "type": "objectId",
+              "nullable": true,
+              "description": "Foreign key reference to cities collection"
+            },
+            {
+              "name": "preferences",
+              "type": "json",
+              "nullable": true,
+              "description": "Free-form user preferences with no fixed structure"
+            }
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "description": "Creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "Last update timestamp"
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "Soft delete timestamp"
+        }
+      ],
+      "createIndex": [
+        {
+          "field": "nickname",
+          "unique": true
+        },
+        {
+          "field": "email",
+          "unique": true
+        },
+        {
+          "field": "phone",
+          "type": "index",
+          "unique": true,
+          "name": "phone_unique_1",
+          "sparse": true,
+          "nullable": true
+        },
+        {
+          "field": ["profile.document", "profile.document_type"],
+          "type": "index",
+          "unique": true,
+          "name": "document_document_type_unique_1"
+        },
+        {
+          "field": "deleted_at",
+          "type": "index",
+          "sparse": true,
+          "nullable": true,
+          "description": "Sparse index to quickly find non-deleted documents"
+        }
+      ]
+    }
+  },
+  "down": {
+    "users": {
+      "dropCollection": true
+    }
+  }
+}

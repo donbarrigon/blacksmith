@@ -22,6 +22,20 @@ for (const target of args.targets) {
       break
     }
 
+    case "run": {
+      switch (args.flags[0]) {
+        case "migration": {
+          const { runMigration } = await import("./src/commands/run/migration")
+          await runMigration(args)
+          break
+        }
+
+        default:
+          break
+      }
+      break
+    }
+
     default:
       break
   }

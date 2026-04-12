@@ -1,0 +1,76 @@
+{
+  "up": {
+    "permissions": {
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "createField": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "nullable": false,
+          "primary": true,
+          "description": "Primary key"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "length": 255,
+          "description": "Permission name"
+        }
+      ],
+      "createIndex": [
+        {
+          "field": "name",
+          "unique": true
+        }
+      ]
+    },
+    "roles": {
+      "validationLevel": "strict",
+      "validationAction": "error",
+      "createField": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "nullable": false,
+          "primary": true,
+          "description": "Primary key"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "length": 255,
+          "description": "Role name"
+        },
+        {
+          "name": "permissions",
+          "type": "array",
+          "items": {
+            "type": "objectId"
+          },
+          "nullable": true,
+          "description": "List of permission names assigned to the role"
+        }
+      ],
+      "createIndex": [
+        {
+          "field": "name",
+          "unique": true
+        },
+        {
+          "field": "permissions",
+          "type": "index",
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "down": {
+    "roles": {
+      "dropCollection": true
+    },
+    "permissions": {
+      "dropCollection": true
+    }
+  }
+}

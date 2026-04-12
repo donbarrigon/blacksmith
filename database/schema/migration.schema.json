@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://forge-cli/migration.schema.json",
   "title": "Forge Migration",
-  "description": "Schema for Forge CLI migration files",
+  "description": "Schema for Forge CLI migration files. Compatible with MongoDB and PostgreSQL",
   "type": "object",
   "required": ["up", "down"],
   "additionalProperties": false,
@@ -15,7 +15,7 @@
   "$defs": {
     "migrationBlock": {
       "type": "object",
-      "description": "Each key is a collection name",
+      "description": "Each key is a collection or table name",
       "additionalProperties": { "$ref": "#/$defs/collectionOperations" }
     },
 
@@ -26,20 +26,47 @@
         "validationLevel": {
           "type": "string",
           "enum": ["strict", "moderate", "off"],
-          "default": "strict",
-          "description": "strict = validates all inserts and updates. moderate = only validates existing valid documents. off = disables validation"
+          "default": "off",
+          "description": "MongoDB only. strict = validates all inserts and updates. moderate = only validates existing valid documents. off = disables validation"
         },
 
         "validationAction": {
           "type": "string",
           "enum": ["error", "warn"],
           "default": "error",
-          "description": "error = rejects invalid documents. warn = logs a warning but allows the operation"
+          "description": "MongoDB only. error = rejects invalid documents. warn = logs a warning but allows the operation"
+        },
+
+        "additionalProperties": {
+          "type": "boolean",
+          "default": false,
+          "description": "MongoDB only. Allow additional fields in documents"
+        },
+
+        "createField": {
+          "type": "array",
+          "description": "Create new fields. In MongoDB adds to $jsonSchema validator. In SQL adds columns to the table",
+          "items": { "$ref": "#/$defs/fieldDefinition" },
+          "minItems": 1
+        },
+
+        "alterField": {
+          "type": "array",
+          "description": "Modify existing fields. In MongoDB updates the $jsonSchema validator. In SQL alters the column definition",
+          "items": { "$ref": "#/$defs/fieldDefinition" },
+          "minItems": 1
+        },
+
+        "dropField": {
+          "type": "array",
+          "description": "Drop fields by name. In MongoDB removes from $jsonSchema. In SQL drops the column",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
         },
 
         "createIndex": {
           "type": "array",
-          "description": "Create new indexes on the collection",
+          "description": "Create new indexes on the collection or table",
           "items": { "$ref": "#/$defs/indexDefinition" },
           "minItems": 1
         },
@@ -58,40 +85,217 @@
           "minItems": 1
         },
 
-        "validator": {
-          "$ref": "#/$defs/mongoValidator",
-          "description": "Create a new validator on the collection"
-        },
-
-        "alterValidator": {
-          "$ref": "#/$defs/mongoValidator",
-          "description": "Replace the existing validator on the collection"
-        },
-
-        "dropValidator": {
-          "type": "boolean",
-          "const": true,
-          "description": "Remove the validator from the collection. The collection remains intact"
+        "indexModel": {
+          "type": "array",
+          "description": "MongoDB only. Raw index models for complex cases not covered by createIndex",
+          "items": { "$ref": "#/$defs/indexModel" },
+          "minItems": 1
         },
 
         "dropCollection": {
           "type": "boolean",
           "const": true,
-          "description": "Drop the entire collection. Recommended only in down blocks"
+          "description": "Drop the entire collection or table. Recommended only in down blocks"
+        }
+      }
+    },
+
+    "fieldDefinition": {
+      "type": "object",
+      "required": ["name", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Field or column name"
         },
 
-        "indexModel": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "int8",
+            "int16",
+            "int",
+            "int64",
+            "uint8",
+            "uint16",
+            "uint",
+            "uint64",
+            "float",
+            "double",
+            "decimal",
+            "string",
+            "text",
+            "char",
+            "bool",
+            "date",
+            "datetime",
+            "timestamp",
+            "objectId",
+            "uuid",
+            "json",
+            "array",
+            "enum",
+            "binary",
+            "inet",
+            "money"
+          ],
+          "description": "Portable data type. The CLI converts to the correct type for each database engine"
+        },
+
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max length. Applies to string and char types. Default 255 for string"
+        },
+
+        "nullable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the field can be null"
+        },
+
+        "default": {
+          "description": "Default value for the field. Type must match the field type",
+          "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }, { "type": "null" }]
+        },
+
+        "primary": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mark field as primary key. In SQL adds PRIMARY KEY constraint. In MongoDB this is always _id"
+        },
+
+        "autoIncrement": {
+          "type": "boolean",
+          "default": false,
+          "description": "SQL only. Auto increment for integer primary keys. Ignored in MongoDB"
+        },
+
+        "unsigned": {
+          "type": "boolean",
+          "default": false,
+          "description": "SQL only. Marks numeric field as unsigned. Ignored in MongoDB"
+        },
+
+        "precision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of digits for decimal and money types"
+        },
+
+        "scale": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of digits after decimal point for decimal and money types"
+        },
+
+        "values": {
           "type": "array",
-          "description": "Raw MongoDB index models for complex cases not covered by createIndex",
-          "items": { "$ref": "#/$defs/indexModel" },
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Required for enum type. List of allowed string values"
+        },
+
+        "description": {
+          "type": "string",
+          "description": "Optional description or comment for the field"
+        },
+
+        "jsonSchema": {
+          "type": "array",
+          "description": "Only for json type. Defines the internal structure of the JSON field. In MongoDB generates a nested $jsonSchema. In PostgreSQL documents the expected JSONB shape",
+          "items": { "$ref": "#/$defs/fieldDefinition" },
           "minItems": 1
+        },
+
+        "items": {
+          "$ref": "#/$defs/arrayItemsDefinition",
+          "description": "Only for array type. Defines the type of each element in the array"
+        }
+      },
+
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "enum" } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["values"],
+            "description": "values is required when type is enum"
+          }
+        }
+      ]
+    },
+
+    "arrayItemsDefinition": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "int8",
+            "int16",
+            "int",
+            "int64",
+            "uint8",
+            "uint16",
+            "uint",
+            "uint64",
+            "float",
+            "double",
+            "decimal",
+            "string",
+            "text",
+            "char",
+            "bool",
+            "date",
+            "datetime",
+            "timestamp",
+            "objectId",
+            "uuid",
+            "json",
+            "array",
+            "enum",
+            "binary",
+            "inet",
+            "money"
+          ],
+          "description": "Portable data type of each array element"
+        },
+        "nullable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the element can be null"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description or comment"
+        },
+        "jsonSchema": {
+          "type": "array",
+          "description": "Only for json type. Defines the internal structure of each element",
+          "items": { "$ref": "#/$defs/fieldDefinition" },
+          "minItems": 1
+        },
+        "values": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Required for enum type. List of allowed string values"
         }
       }
     },
 
     "indexDefinition": {
       "type": "object",
-      "required": ["field", "type"],
+      "required": ["field"],
       "additionalProperties": false,
       "properties": {
         "field": {
@@ -114,48 +318,33 @@
 
         "type": {
           "type": "string",
-          "enum": [
-            "string",
-            "int",
-            "long",
-            "double",
-            "decimal",
-            "bool",
-            "date",
-            "timestamp",
-            "objectId",
-            "uuid",
-            "binData",
-            "object",
-            "array",
-            "null"
-          ],
-          "description": "Data type of the field"
-        },
-
-        "index": {
-          "type": "string",
           "enum": ["index", "text", "hashed", "2dsphere", "2d", "wildcard"],
           "default": "index",
-          "description": "Index type. Defaults to index"
+          "description": "Index type. hashed, 2dsphere, 2d and wildcard are MongoDB only. Defaults to index"
         },
 
-        "indexName": {
+        "name": {
           "type": "string",
           "minLength": 1,
           "description": "Custom name for the index. Auto-generated if omitted"
         },
 
-        "length": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Max length for string fields. Default 255 for string type"
+        "unique": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce uniqueness on the indexed field or fields"
+        },
+
+        "sparse": {
+          "type": "boolean",
+          "default": false,
+          "description": "MongoDB only. Only index documents that contain the field"
         },
 
         "nullable": {
           "type": "boolean",
           "default": false,
-          "description": "Whether the field can be null"
+          "description": "Whether the indexed field allows null values"
         },
 
         "order": {
@@ -165,28 +354,21 @@
           "description": "Index sort order. Converted to 1 (asc) or -1 (desc) internally"
         },
 
-        "sparse": {
-          "type": "boolean",
-          "default": false,
-          "description": "Only index documents that contain the field. Useful for nullable fields"
-        },
-
-        "unique": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enforce uniqueness independently of index type"
+        "description": {
+          "type": "string",
+          "description": "Optional description or comment for the index"
         },
 
         "background": {
           "type": "boolean",
           "default": false,
-          "description": "Build index in background without blocking the collection. Recommended for production"
+          "description": "MongoDB only. Build index in background without blocking the collection"
         },
 
         "expireAfterSeconds": {
           "type": "integer",
           "minimum": 0,
-          "description": "TTL in seconds. Only valid for date and timestamp fields"
+          "description": "MongoDB only. TTL in seconds. Only valid for date, datetime and timestamp fields"
         },
 
         "collation": {
@@ -237,140 +419,11 @@
       }
     },
 
-    "mongoValidator": {
-      "type": "object",
-      "required": ["$jsonSchema"],
-      "additionalProperties": false,
-      "description": "MongoDB validator object passed directly to the driver",
-      "properties": {
-        "$jsonSchema": {
-          "type": "object",
-          "required": ["bsonType"],
-          "additionalProperties": true,
-          "properties": {
-            "bsonType": {
-              "type": "string",
-              "const": "object"
-            },
-            "required": {
-              "type": "array",
-              "items": { "type": "string" },
-              "minItems": 1,
-              "uniqueItems": true,
-              "description": "List of required field names"
-            },
-            "additionalProperties": {
-              "type": "boolean",
-              "description": "Whether fields not listed in properties are allowed"
-            },
-            "description": {
-              "type": "string"
-            },
-            "properties": {
-              "type": "object",
-              "additionalProperties": { "$ref": "#/$defs/bsonProperty" }
-            }
-          }
-        }
-      }
-    },
-
-    "bsonProperty": {
-      "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "bsonType": {
-          "oneOf": [
-            {
-              "type": "string",
-              "enum": [
-                "string",
-                "int",
-                "long",
-                "double",
-                "decimal",
-                "bool",
-                "date",
-                "timestamp",
-                "objectId",
-                "uuid",
-                "binData",
-                "object",
-                "array",
-                "null",
-                "regex",
-                "javascript"
-              ]
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "string",
-                  "int",
-                  "long",
-                  "double",
-                  "decimal",
-                  "bool",
-                  "date",
-                  "timestamp",
-                  "objectId",
-                  "uuid",
-                  "binData",
-                  "object",
-                  "array",
-                  "null",
-                  "regex",
-                  "javascript"
-                ]
-              },
-              "minItems": 2,
-              "uniqueItems": true,
-              "description": "Multiple allowed types e.g. [string, null] for nullable fields"
-            }
-          ]
-        },
-
-        "description": { "type": "string" },
-        "minLength": { "type": "integer", "minimum": 0 },
-        "maxLength": { "type": "integer", "minimum": 0 },
-        "minimum": { "type": "number" },
-        "maximum": { "type": "number" },
-        "exclusiveMinimum": { "type": "number" },
-        "exclusiveMaximum": { "type": "number" },
-        "pattern": {
-          "type": "string",
-          "description": "Regex pattern the string must match"
-        },
-        "enum": {
-          "type": "array",
-          "minItems": 1,
-          "description": "List of allowed values"
-        },
-        "minItems": { "type": "integer", "minimum": 0 },
-        "maxItems": { "type": "integer", "minimum": 0 },
-        "uniqueItems": { "type": "boolean" },
-        "required": {
-          "type": "array",
-          "items": { "type": "string" },
-          "uniqueItems": true,
-          "description": "Required fields for nested objects"
-        },
-        "additionalProperties": { "type": "boolean" },
-        "items": { "$ref": "#/$defs/bsonProperty" },
-        "properties": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/bsonProperty" }
-        }
-      }
-    },
-
     "indexModel": {
       "type": "object",
       "required": ["model"],
       "additionalProperties": false,
-      "description": "Raw MongoDB index model for complex cases. Uses Go driver v2 conventions",
+      "description": "MongoDB only. Raw index model using Go driver v2 conventions",
       "properties": {
         "model": {
           "type": "object",
@@ -396,17 +449,11 @@
           "description": "MongoDB CreateIndexesOptions from the Go driver v2",
           "additionalProperties": true,
           "properties": {
-            "name": {
-              "type": "string",
-              "description": "Custom index name"
-            },
+            "name": { "type": "string" },
             "unique": { "type": "boolean" },
             "sparse": { "type": "boolean" },
             "background": { "type": "boolean" },
-            "expireAfterSeconds": {
-              "type": "integer",
-              "minimum": 0
-            },
+            "expireAfterSeconds": { "type": "integer", "minimum": 0 },
             "partialFilterExpression": {
               "type": "object",
               "description": "Filter expression for partial indexes"
