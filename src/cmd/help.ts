@@ -1,6 +1,6 @@
 // import { readFile } from "node:fs/promises"
 // import { join } from "node:path"
-import { color, style } from "../cmd/print"
+import { color, style } from "../utils/print"
 
 export function version(): void {
   const c = color.text

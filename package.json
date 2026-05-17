@@ -16,7 +16,10 @@
     "mongodb": "^7.1.1"
   },
   "scripts": {
-    "dev": "bun index.ts",
-    "build": "bun build index.ts --compile --outfile dist/fg"
+    "dev": "bun blacksmith.ts run dev",
+    "build": "bun blacksmith.ts run build",
+    "fg":"bun blacksmith.ts",
+    "mk": "bun blacksmith.ts make",
+    "make": "bun blacksmith.ts make"
   }
 }

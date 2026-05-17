@@ -373,6 +373,11 @@
 
         "collation": {
           "$ref": "#/$defs/collation"
+        },
+
+        "foreign": {
+          "$ref": "#/$defs/foreignDefinition",
+          "description": "Foreign key constraint. SQL creates FOREIGN KEY. MongoDB documents the reference relationship"
         }
       }
     },
@@ -417,6 +422,51 @@
           "description": "Accent marks sort from back of string. Used in French"
         }
       }
+    },
+
+    "foreignDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Foreign key definition. Use auto:true to infer collection and field from the field name",
+      "properties": {
+        "auto": {
+          "type": "boolean",
+          "const": true,
+          "description": "Infer collection removing _id suffix from field name. Sets onUpdate and onDelete to cascade"
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Referenced collection or table name"
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Referenced field name. Usually _id"
+        },
+        "onUpdate": {
+          "type": "string",
+          "enum": ["cascade", "restrict", "set_null", "set_default", "no_action"],
+          "default": "cascade",
+          "description": "Action on referenced field update"
+        },
+        "onDelete": {
+          "type": "string",
+          "enum": ["cascade", "restrict", "set_null", "set_default", "no_action"],
+          "default": "restrict",
+          "description": "Action on referenced document or row delete"
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["auto"],
+          "description": "Auto mode: infer collection and field from field name"
+        },
+        {
+          "required": ["collection", "field"],
+          "description": "Manual mode: explicitly define collection and field"
+        }
+      ]
     },
 
     "indexModel": {

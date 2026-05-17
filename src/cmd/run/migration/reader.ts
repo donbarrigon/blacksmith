@@ -4,6 +4,14 @@ import { join } from "node:path"
 
 const MIGRATION_DIR = join(process.cwd(), "database", "migration")
 
+export interface ArrayItemsDefinition {
+  type: string
+  nullable?: boolean
+  description?: string
+  values?: string[]
+  jsonSchema?: FieldDefinition[]
+}
+
 export interface FieldDefinition {
   name: string
   type: string
@@ -18,7 +26,15 @@ export interface FieldDefinition {
   values?: string[]
   description?: string
   jsonSchema?: FieldDefinition[]
-  items?: FieldDefinition
+  items?: ArrayItemsDefinition
+}
+
+export interface ForeignDefinition {
+  auto?: true
+  collection?: string
+  field?: string
+  onUpdate?: "cascade" | "restrict" | "set_null" | "set_default" | "no_action"
+  onDelete?: "cascade" | "restrict" | "set_null" | "set_default" | "no_action"
 }
 
 export interface IndexDefinition {
@@ -33,6 +49,7 @@ export interface IndexDefinition {
   expireAfterSeconds?: number
   collation?: object
   description?: string
+  foreign?: ForeignDefinition
 }
 
 export interface IndexModel {
@@ -70,7 +87,7 @@ export async function getMigrationFiles(): Promise<string[]> {
   }
 
   const entries = await readdir(MIGRATION_DIR)
-  return entries.filter((f) => f.endsWith(".json")).sort() // orden alfabetico garantiza el orden por nombre de archivo
+  return entries.filter((f) => f.endsWith(".json")).sort()
 }
 
 export async function parseMigrationFile(file: string): Promise<ParsedMigration> {

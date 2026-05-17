@@ -2,16 +2,8 @@ import { checkbox, input, select } from "@inquirer/prompts"
 import { argv } from "bun"
 import type { Args } from "../types/Args"
 import type { NameConvention } from "../types/NameConvention"
-import {
-  pluralizeIdentifier,
-  toCamelCase,
-  toKebabCase,
-  toPascalCase,
-  toSnakeCase,
-  toText,
-  toTitleCase,
-} from "../utils/str"
 import { actions, migrationFlags } from "./actions"
+import { pluralizeIdentifier, toCamelCase, toKebabCase, toPascalCase, toSnakeCase, toText, toTitleCase } from "./str"
 
 export async function getArgs(): Promise<Args> {
   const inputs = argv.slice(2)
