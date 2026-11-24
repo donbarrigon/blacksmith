@@ -1,0 +1,13 @@
+[package]
+name = "blacksmith"
+version = "0.1.0"
+edition = "2024"
+description = "CLI de desarrollo para proyectos ironforge"
+
+[dependencies]
+anyhow = "1.0.105"
+clap = { version = "4.6.9", features = ["derive"] }
+owo-colors = "4.4.0"
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
