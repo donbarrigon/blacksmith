@@ -4,8 +4,8 @@
 use std::io::IsTerminal;
 
 use anyhow::bail;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
@@ -16,8 +16,17 @@ use crate::migrate::{MigrationRow, SeedRow};
 /// Elige migraciones. Devuelve `m<id>` (up) o `-m<id>` (down) en el orden
 /// marcado; `None` si se canceló.
 pub fn pick_migrations(rows: &[MigrationRow]) -> anyhow::Result<Option<Vec<String>>> {
-    let items = rows
-        .iter()
+    pick("Migraciones", migration_items(rows), true)
+}
+
+/// Elige seeds. Devuelve `s<id>` en el orden marcado; `None` si se canceló.
+pub fn pick_seeds(rows: &[SeedRow]) -> anyhow::Result<Option<Vec<String>>> {
+    pick("Seeds", seed_items(rows), false)
+}
+
+/// Items del selector de migraciones (solo las que están en el código).
+pub fn migration_items(rows: &[MigrationRow]) -> Vec<Item> {
+    rows.iter()
         .filter(|m| m.in_code)
         .map(|m| {
             let state = match (m.applied, m.last_op.as_deref()) {
@@ -31,14 +40,12 @@ pub fn pick_migrations(rows: &[MigrationRow]) -> anyhow::Result<Option<Vec<Strin
                 applied: m.applied,
             }
         })
-        .collect();
-    pick("Migraciones", items, true)
+        .collect()
 }
 
-/// Elige seeds. Devuelve `s<id>` en el orden marcado; `None` si se canceló.
-pub fn pick_seeds(rows: &[SeedRow]) -> anyhow::Result<Option<Vec<String>>> {
-    let items = rows
-        .iter()
+/// Items del selector de seeds (solo los que están en el código).
+pub fn seed_items(rows: &[SeedRow]) -> Vec<Item> {
+    rows.iter()
         .filter(|s| s.in_code)
         .map(|s| {
             let state = match s.status.as_deref() {
@@ -53,21 +60,29 @@ pub fn pick_seeds(rows: &[SeedRow]) -> anyhow::Result<Option<Vec<String>>> {
                 applied: s.status.as_deref() == Some("ok"),
             }
         })
-        .collect();
-    pick("Seeds", items, false)
+        .collect()
 }
 
 #[derive(Debug, Clone)]
-struct Item {
+pub struct Item {
     id: String,
     info: String,
     /// Migración ejecutada / seed ok.
     applied: bool,
 }
 
+/// Resultado de una tecla en el selector.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Continue,
+    /// Enter: la lista elegida (puede estar vacía).
+    Done(Vec<String>),
+    Cancel,
+}
+
 /// Estado del selector, sin terminal.
-struct Picker {
-    items: Vec<Item>,
+pub struct Picker {
+    pub items: Vec<Item>,
     allow_down: bool,
     cursor: usize,
     /// (índice del item, down) en el orden en que se marcaron.
@@ -75,7 +90,7 @@ struct Picker {
 }
 
 impl Picker {
-    fn new(items: Vec<Item>, allow_down: bool) -> Self {
+    pub fn new(items: Vec<Item>, allow_down: bool) -> Self {
         Self {
             items,
             allow_down,
@@ -84,12 +99,34 @@ impl Picker {
         }
     }
 
-    fn up(&mut self) {
+    pub fn up(&mut self) {
         self.cursor = self.cursor.checked_sub(1).unwrap_or(self.items.len() - 1);
     }
 
-    fn down(&mut self) {
+    pub fn down(&mut self) {
         self.cursor = (self.cursor + 1) % self.items.len();
+    }
+
+    /// Mueve el cursor a un item (clic) y lo marca o desmarca.
+    pub fn click(&mut self, i: usize) {
+        if i < self.items.len() {
+            self.cursor = i;
+            self.toggle();
+        }
+    }
+
+    pub fn on_key(&mut self, key: KeyEvent) -> Outcome {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => self.up(),
+            KeyCode::Down | KeyCode::Char('j') => self.down(),
+            KeyCode::Char(' ') => self.toggle(),
+            KeyCode::Char('-') => self.flip(),
+            KeyCode::Enter => return Outcome::Done(self.result()),
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return Outcome::Cancel,
+            KeyCode::Esc | KeyCode::Char('q') => return Outcome::Cancel,
+            _ => {}
+        }
+        Outcome::Continue
     }
 
     /// Espacio: marca o desmarca. Una migración ejecutada se marca como down.
@@ -130,7 +167,7 @@ impl Picker {
         self.allow_down && self.mark(i).is_some_and(|(_, down)| down != self.items[i].applied)
     }
 
-    fn result(&self) -> Vec<String> {
+    pub fn result(&self) -> Vec<String> {
         self.order
             .iter()
             .map(|(i, down)| {
@@ -163,33 +200,31 @@ fn pick(title: &str, items: Vec<Item>, allow_down: bool) -> anyhow::Result<Optio
 fn event_loop(terminal: &mut DefaultTerminal, picker: &mut Picker, title: &str) -> anyhow::Result<Option<Vec<String>>> {
     let mut state = ListState::default();
     loop {
-        state.select(Some(picker.cursor));
-        terminal.draw(|f| draw(f, picker, title, &mut state))?;
+        terminal.draw(|f| {
+            render(f, f.area(), picker, title, &mut state);
+        })?;
         let Event::Key(key) = event::read()? else { continue };
         if key.kind != KeyEventKind::Press {
             continue;
         }
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => picker.up(),
-            KeyCode::Down | KeyCode::Char('j') => picker.down(),
-            KeyCode::Char(' ') => picker.toggle(),
-            KeyCode::Char('-') => picker.flip(),
-            KeyCode::Enter => return Ok(Some(picker.result())),
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(None),
-            KeyCode::Esc | KeyCode::Char('q') => return Ok(None),
-            _ => {}
+        match picker.on_key(key) {
+            Outcome::Continue => {}
+            Outcome::Done(list) => return Ok(Some(list)),
+            Outcome::Cancel => return Ok(None),
         }
     }
 }
 
-fn draw(f: &mut Frame, picker: &Picker, title: &str, state: &mut ListState) {
+/// Dibuja el selector en `area` y devuelve el área de la lista (para clics).
+pub fn render(f: &mut Frame, area: Rect, picker: &Picker, title: &str, state: &mut ListState) -> Rect {
+    state.select(Some(picker.cursor));
     let [head, list, preview, help] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(1),
         Constraint::Length(1),
     ])
-    .areas(f.area());
+    .areas(area);
 
     let marked = picker.order.len();
     f.render_widget(
@@ -242,6 +277,7 @@ fn draw(f: &mut Frame, picker: &Picker, title: &str, state: &mut ListState) {
         "↑↓ moverse · espacio marcar · enter correr · esc cancelar"
     };
     f.render_widget(Paragraph::new(keys).style(Style::new().fg(Color::DarkGray)), help);
+    list
 }
 
 #[cfg(test)]

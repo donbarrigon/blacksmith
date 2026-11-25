@@ -34,13 +34,13 @@ Seeds:
 En zsh pon la lista entre comillas: '[m261122_1401_create_users]'";
 
 /// Estado que devuelve `migrate status json`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Status {
     pub migrations: Vec<MigrationRow>,
     pub seeds: Vec<SeedRow>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct MigrationRow {
     /// Con prefijo: `m261122_1401_create_users`.
     pub id: String,
@@ -51,7 +51,7 @@ pub struct MigrationRow {
     pub in_code: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SeedRow {
     /// Con prefijo: `s261122_1501_users_admin`.
     pub id: String,
@@ -69,9 +69,7 @@ pub fn run(root: &Path, target: &str, args: Vec<String>) -> anyhow::Result<ExitC
     if resolved != args {
         println!("{} {target} {}", "→".cyan(), resolved.join(" "));
     }
-    let status = migrate_cmd(root, false)
-        .arg(target)
-        .args(&resolved)
+    let status = command(root, target, &resolved)
         .status()
         .context("no se pudo ejecutar cargo")?;
     Ok(exit_code(status))
@@ -89,38 +87,67 @@ fn migrate_cmd(root: &Path, quiet: bool) -> Command {
     cmd
 }
 
-/// Reemplaza cada `list` (justo después de `migration` o de `seed`) por la
-/// lista `[...]` elegida en el selector. `None` = el usuario canceló.
-fn resolve_lists(root: &Path, target: &str, args: &[String]) -> anyhow::Result<Option<Vec<String>>> {
-    let mut status: Option<Status> = None;
-    let mut out = Vec::with_capacity(args.len());
+/// Qué lista abre un `list`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListKind {
+    Migrations,
+    Seeds,
+}
+
+/// Posiciones de cada `list` en `args` y qué lista elige. Error si un `list`
+/// no va justo después de `migration` o de `seed`.
+pub fn list_slots(target: &str, args: &[String]) -> anyhow::Result<Vec<(usize, ListKind)>> {
+    let mut slots = Vec::new();
     for (i, arg) in args.iter().enumerate() {
         if arg != "list" {
-            out.push(arg.clone());
             continue;
         }
         let prev = if i == 0 { target } else { args[i - 1].as_str() };
-        if prev != "migration" && prev != "seed" {
-            bail!("list va justo después de migration o de seed");
+        match prev {
+            "migration" => slots.push((i, ListKind::Migrations)),
+            "seed" => slots.push((i, ListKind::Seeds)),
+            _ => bail!("list va justo después de migration o de seed"),
         }
-        if status.is_none() {
-            status = Some(load_status(root)?);
-        }
-        let Some(st) = status.as_ref() else { unreachable!() };
-        let picked = if prev == "migration" {
-            select::pick_migrations(&st.migrations)?
-        } else {
-            select::pick_seeds(&st.seeds)?
+    }
+    Ok(slots)
+}
+
+/// Reemplaza cada `list` (justo después de `migration` o de `seed`) por la
+/// lista `[...]` elegida en el selector. `None` = el usuario canceló.
+fn resolve_lists(root: &Path, target: &str, args: &[String]) -> anyhow::Result<Option<Vec<String>>> {
+    let slots = list_slots(target, args)?;
+    if slots.is_empty() {
+        return Ok(Some(args.to_vec()));
+    }
+    let st = load_status(root)?;
+    let mut out = args.to_vec();
+    for (i, kind) in slots {
+        let picked = match kind {
+            ListKind::Migrations => select::pick_migrations(&st.migrations)?,
+            ListKind::Seeds => select::pick_seeds(&st.seeds)?,
         };
         match picked {
-            Some(list) if !list.is_empty() => out.push(format!("[{}]", list.join(", "))),
+            Some(list) if !list.is_empty() => out[i] = format_list(&list),
             _ => return Ok(None),
         }
     }
     Ok(Some(out))
 }
 
+/// `[a, b, c]`, como lo espera el binario `migrate`.
+pub fn format_list(ids: &[String]) -> String {
+    format!("[{}]", ids.join(", "))
+}
+
+/// El comando que ejecuta `migrate <target> <args>` (args ya sin `list`).
+pub fn command(root: &Path, target: &str, args: &[String]) -> Command {
+    let mut cmd = migrate_cmd(root, false);
+    cmd.arg(target).args(args);
+    cmd
+}
+
 /// Corre `migrate status json` y lee la última línea JSON de la salida.
+/// Para el CLI: avisa y deja ver la compilación de cargo si falla.
 pub fn load_status(root: &Path) -> anyhow::Result<Status> {
     println!("{}", "Leyendo el estado de las migraciones...".dimmed());
     let output = migrate_cmd(root, true)
@@ -131,8 +158,24 @@ pub fn load_status(root: &Path) -> anyhow::Result<Status> {
     if !output.status.success() {
         bail!("`migrate status json` terminó con error");
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_status(&stdout)
+    parse_status(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Como `load_status` pero sin escribir en la terminal (para la interfaz):
+/// si falla, el error incluye el final de lo que cargo escribió en stderr.
+pub fn fetch_status(root: &Path) -> anyhow::Result<Status> {
+    let output = migrate_cmd(root, true)
+        .args(["status", "json"])
+        .stdin(Stdio::null())
+        .output()
+        .context("no se pudo ejecutar cargo")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: Vec<&str> = stderr.lines().rev().take(15).collect();
+        let tail: Vec<&str> = tail.into_iter().rev().collect();
+        bail!("`migrate status json` terminó con error:\n{}", tail.join("\n"));
+    }
+    parse_status(&String::from_utf8_lossy(&output.stdout))
 }
 
 fn parse_status(stdout: &str) -> anyhow::Result<Status> {
@@ -165,5 +208,16 @@ mod tests {
         assert!(st.migrations[0].applied);
         assert_eq!(st.seeds[0].attempts, 0);
         assert!(parse_status("sin json").is_err());
+    }
+
+    #[test]
+    fn encuentra_cada_list() {
+        let args: Vec<String> = ["list", "seed", "list"].map(String::from).into();
+        assert_eq!(
+            list_slots("migration", &args).unwrap(),
+            [(0, ListKind::Migrations), (2, ListKind::Seeds)]
+        );
+        assert!(list_slots("migration", &["step".into(), "list".into()]).is_err());
+        assert!(list_slots("seed", &[]).unwrap().is_empty());
     }
 }
